@@ -1,0 +1,83 @@
+cabal-version: 3.0
+
+name:           qty
+
+version:        0.1.0.0
+author:         Jens Nolte
+maintainer:     Jens Nolte
+copyright:      2019 Jens Nolte
+license:        BSD-3-Clause
+build-type:     Simple
+
+source-repository head
+  type: git
+  location: https://github.com/queezle42/qty
+
+common shared-properties
+  default-language: GHC2021
+  default-extensions:
+    ApplicativeDo
+    BlockArguments
+    DuplicateRecordFields
+    LambdaCase
+    MultiWayIf
+    NoImplicitPrelude
+    OverloadedStrings
+  ghc-options:
+    -Weverything
+    -Wno-all-missed-specialisations
+    -Wno-missing-deriving-strategies
+    -Wno-implicit-prelude
+    -Wno-missing-import-lists
+    -Wno-missing-kind-signatures
+    -Wno-missing-safe-haskell-mode
+    -Wno-unsafe
+    -Werror=incomplete-patterns
+    -Werror=missing-fields
+    -Werror=missing-home-modules
+    -Werror=missing-methods
+
+library
+  import: shared-properties
+  build-depends:
+    base <5,
+    bytestring,
+    optparse-applicative,
+    posix-pty,
+    process,
+    quasar,
+    unix,
+  exposed-modules:
+    Qty.Cli
+    Qty.Host
+  other-modules:
+  hs-source-dirs:
+    src
+
+executable qty
+  import: shared-properties
+  ghc-options:
+    -threaded
+    -rtsopts
+    "-with-rtsopts=-N -I0"
+  build-depends:
+    base <5,
+    qty,
+  hs-source-dirs:
+    app
+  main-is: Main.hs
+
+test-suite qty-test
+  import: shared-properties
+  type: exitcode-stdio-1.0
+  ghc-options:
+    -threaded
+    -rtsopts
+    "-with-rtsopts=-N -I0"
+  main-is: Spec.hs
+  other-modules:
+  hs-source-dirs:
+    test
+  build-depends:
+    base <5,
+    hspec,
