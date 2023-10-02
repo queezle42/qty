@@ -18,11 +18,17 @@ common shared-properties
   default-extensions:
     ApplicativeDo
     BlockArguments
+    DataKinds
+    DuplicateRecordFields
     DuplicateRecordFields
     LambdaCase
     MultiWayIf
     NoImplicitPrelude
+    NoStarIsType
+    OverloadedRecordDot
     OverloadedStrings
+    QuasiQuotes
+    ViewPatterns
   ghc-options:
     -Weverything
     -Wno-all-missed-specialisations
@@ -46,10 +52,13 @@ library
     posix-pty,
     process,
     quasar,
+    text,
     unix,
   exposed-modules:
     Qty.Cli
+    Qty.Client
     Qty.Host
+    Qty.Types
   other-modules:
   hs-source-dirs:
     src

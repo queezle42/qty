@@ -1,95 +1,67 @@
 module Qty.Host (
   hostMain,
+  runHost,
 ) where
 
 import Control.Exception (handle)
 import Data.ByteString qualified as BS
+import Qty.Types
 import Quasar.Async
+import Quasar.MonadQuasar
 import Quasar.MonadQuasar.Misc
 import Quasar.Prelude
+import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..))
 import System.IO (hPutStrLn, stdin, stdout, stderr)
 import System.Posix.Pty
-import System.Posix.Signals (Handler(..), installHandler)
-import System.Posix.Signals.Exts (sigWINCH)
-import System.Posix.Types (Fd(..))
 import System.Process
+import Quasar.Observable.Core (retrieveObservable)
 
 hostMain :: [String] -> IO ()
-hostMain [] = putStrLn "TODO find user shell"
-hostMain (program:args) = runHost program args
+hostMain cmd = do
+  runQuasarAndExit do
+    runHost Nothing cmd >>= \case
+      ExitSuccess -> pure ()
+      ExitFailure exitCode -> liftIO $
+        hPutStrLn stderr $ "qty: Hosted process exited with code " <> show exitCode
 
-runHost :: String -> [String] -> IO ()
-runHost program args = runQuasarAndExitWith toExitCode do
-  exitCode <- withRawMode do
+cmdToProgramAndArgs :: [String] -> IO (String, [String])
+cmdToProgramAndArgs [] = fail "TODO find user shell using getent"
+cmdToProgramAndArgs (program:args) = pure (program, args)
 
-    (pty, processHandle) <- liftIO $ spawnWithPty
-      Nothing
-      True -- search in PATH
-      program
-      args
-      (120, 40) -- initial dimensions
+runHost :: (MonadIO m, MonadQuasar m) => Maybe Client -> [String] -> m ExitCode
+runHost initialClient cmd = do
+  (program, args) <- liftIO $ cmdToProgramAndArgs cmd
 
-    -- pty to stdout
-    async_ $ liftIO $ handle (\(_ :: IOException) -> pure ()) do
-      forever do
-        chunk <- readPty pty
-        BS.hPutStr stdout chunk
+  winsize <- case initialClient of
+    Just ((.clientWinsize) -> Just winsizeObservable) ->
+      retrieveObservable winsizeObservable
+    _ -> pure (120, 40) -- initial dimensions
 
-    -- stdin to pty
-    async_ $ liftIO $ forever do
-      chunk <- BS.hGetSome stdin 4096
-      writePty pty chunk
+  env <- liftIO getEnvironment
+  (pty, processHandle) <- liftIO $ spawnWithPty
+    (Just (("QTY", "1") : env))
+    True -- search in PATH
+    program
+    args
+    winsize
 
-    liftIO $ waitForProcess processHandle
+  -- pty to stdout
+  async_ $ liftIO $ handle (\(_ :: IOException) -> pure ()) do
+    forever do
+      chunk <- readPty pty
+      -- TODO send to clients instead
+      BS.hPutStr stdout chunk
 
-  liftIO $ hPutStrLn stderr $ "qty: Process exited with code " <> show exitCode
-  pure exitCode
+  -- stdin to pty
+  async_ $ liftIO $ forever do
+      -- TODO get from clients instead
+    chunk <- BS.hGetSome stdin 4096
+    writePty pty chunk
+
+  liftIO $ waitForProcess processHandle
 
 toExitCode :: QuasarExitState ExitCode -> ExitCode
 toExitCode (QuasarExitSuccess exitCode) = exitCode
 toExitCode (QuasarExitAsyncException exitCode) = exitCode
 toExitCode QuasarExitMainThreadFailed = ExitFailure 255
-
-withRawMode :: MonadIO m => m a -> m a
-withRawMode action = do
-  liftIO (createPty (Fd 1)) >>= \case
-    Nothing -> action
-    Just terminalPty -> do
-      attrs <- liftIO $ setRawMode terminalPty
-      result <- action
-      liftIO $ setTerminalAttributes terminalPty attrs WhenFlushed
-      pure result
-
--- Set "raw" mode, equivalent to @cfmakeraw@ in @termios(3)@.
---
--- Returns the previously set attributes, to allow restoring the terminal to the
--- original state.
-setRawMode :: Pty -> IO TerminalAttributes
-setRawMode pty = do
-  attrs <- getTerminalAttributes pty
-  setTerminalAttributes pty (rawMode attrs) Immediately
-  pure attrs
-  where
-    rawMode :: TerminalAttributes -> TerminalAttributes
-    rawMode =
-      -- Input flags
-      (`withoutMode` IgnoreBreak) .
-      (`withoutMode` InterruptOnBreak) .
-      (`withoutMode` MarkParityErrors) .
-      (`withoutMode` StripHighBit) .
-      (`withoutMode` MapLFtoCR) .
-      (`withoutMode` IgnoreCR) .
-      (`withoutMode` MapCRtoLF) .
-      (`withoutMode` StartStopOutput) .
-      -- Output flags
-      (`withoutMode` ProcessOutput) .
-      (`withoutMode` EnableParity) .
-      -- Local modes
-      (`withoutMode` EnableEcho) .
-      (`withoutMode` EchoLF) .
-      (`withoutMode` ProcessInput) .
-      (`withoutMode` KeyboardInterrupts) .
-      (`withoutMode` ExtendedFunctions) .
-      -- Character size
-      (`withBits` 8)

@@ -7,6 +7,7 @@ module Qty.Cli (
 import Quasar.Prelude
 import Options.Applicative
 import Qty.Host qualified
+import Qty.Client qualified
 
 -- | Main entry point and argument parser.
 main :: IO ()
@@ -18,7 +19,9 @@ main = join (customExecParser (prefs showHelpOnEmpty) parser)
 
     mainParser :: Parser (IO ())
     mainParser = hsubparser (
-        command "run" (info (Qty.Host.hostMain <$> hostParser) (progDesc "Host a process in a pty and connect to it in the current terminal."))
+        command "run" (info (Qty.Client.hostAndClientMain <$> hostParser) (progDesc "Host a process in a pty and connect to it in the current terminal.")) <>
+        command "host" (info (Qty.Host.hostMain <$> hostParser) (progDesc "Host a process in a pty.")) <>
+        command "connect" (info connectParser (progDesc "Connect to a pty hosted in another qty process."))
       )
 
     hostParser :: Parser [String]
